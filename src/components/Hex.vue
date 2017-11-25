@@ -1,92 +1,44 @@
 <template lang="html">
-  <g @click="toggle">
-    <polygon class="outline" :class="{solid, origin}" :points="corners | points" />
-    <template v-if="solid">
+  <g :class="{solid: hex.solid, source: hex.source}">
+    <polygon class="outline" :points="corners | points" />
+    <template v-if="hex.source">
+      <circle class="light" v-for="i in 3" :cx="position[0]" :cy="position[1]" :r="`${0.1 * i * i}rem`" :fill="`rgba(255, 230, 0, ${0.5 - i * i * 0.05})`" />
+    </template>
+    <template v-if="hex.solid">
       <circle v-for="corner in projectionCorners" :cx="corner[0]" :cy="corner[1]" r="0.03rem" stroke="none" fill="black" />
       <circle :cx="position[0]" :cy="position[1]" r="0.03rem" stroke="none" fill="red" />
-      <text :x="position[0]" :y="position[1]" dy="0.05rem" text-anchor="middle" alignment-baseline="central">{{ Math.round(angle) }}</text>
-      <text :x="position[0]" :y="position[1]" dy="-0.15rem"text-anchor="middle" alignment-baseline="central">{{ sextant }}</text>
+      <text class="label" :x="position[0]" :y="position[1]" dy="0.05rem" text-anchor="middle" alignment-baseline="central">{{ Math.round(angle) }}</text>
+      <text class="label" :x="position[0]" :y="position[1]" dy="-0.15rem"text-anchor="middle" alignment-baseline="central">{{ sextant }}</text>
       <polygon class="shadow" :points="shadowPoints | points" />
+    </template>
+    <template v-else>
+      <text class="label" :x="position[0]" :y="position[1]" dy="-0.075rem" text-anchor="middle" alignment-baseline="central">
+        {{ hex.x }}, {{ hex.y }}
+      </text>
     </template>
   </g>
 </template>
 
 <script>
-const sqrt3 = Math.sqrt(3)
-
-const normalize = ([x, y]) => {
-  const length = Math.sqrt(x * x + y * y)
-  return [x / length, y / length]
-}
-
-const add = ([x1, y1], [x2, y2]) => [x1 + x2, y1 + y2]
-const subtract = ([x1, y1], [x2, y2]) => [x1 - x2, y1 - y2]
-
-const multiply = ([x, y], factor) => [factor * x, factor * y]
-
-const scale = (v, factor) => multiply(normalize(v), factor)
+import {add, subtract, scale} from 'assets/vector-math'
+import {toCartesianCoords, toOffsetCoords, calculateCorners} from 'assets/hex-math'
 
 export default {
   props: {
-    coords: Array,
+    hex: Object,
     grid: Object,
     pointShadowSource: Boolean
   },
-  data () {
-    return {
-      solid: false
-    }
-  },
   computed: {
-    origin () {
-      return this.coords[0] === 0 && this.coords[1] === 0
-    },
+    coords () { return [this.hex.x, this.hex.y] },
     offsetCoords () {
-      if (this.coords.length === 2) {
-        return this.coords
-      }
-      const x = this.coords[0]
-      const z = this.coords[2]
-      return this.grid.flatTop
-        ? this.grid.offset === 'even'
-          ? [x, z + (x + (x & 1)) / 2]
-          : [x, z + (x - (x & 1)) / 2]
-        : this.grid.offset === 'even'
-          ? [x + (z + (z & 1)) / 2, z]
-          : [x + (z - (z & 1)) / 2, z]
+      return toOffsetCoords(this.coords, this.grid)
     },
-    height () { return 0.5 * sqrt3 * this.grid.radius },
     position () {
-      const [x, y] = this.offsetCoords
-      const r = this.grid.radius
-      const h = this.height
-      const even = this.grid.offset === 'even'
-      return this.grid.flatTop
-        ? [x * 1.5 * r, (y * 2 + ((even ? x + 1 : x) & 1)) * h]
-        : [(x * 2 + ((even ? y + 1 : y) & 1)) * h, y * 1.5 * r]
+      return toCartesianCoords(this.offsetCoords, this.grid)
     },
     corners () {
-      const [x, y] = this.position
-      const h = this.height
-      const r = this.grid.radius
-      const a = r / 2
-      return this.grid.flatTop
-        ? [
-          [x - a, y - h],
-          [x + a, y - h],
-          [x + r, y],
-          [x + a, y + h],
-          [x - a, y + h],
-          [x - r, y]
-        ]
-        : [
-          [x, y - r],
-          [x + h, y - a],
-          [x + h, y + a],
-          [x, y + r],
-          [x - h, y + a],
-          [x - h, y - a]
-        ]
+      return calculateCorners(this.position, this.grid)
     },
     distance () {
       return Math.sqrt(this.position[0] * this.position[0] + this.position[1] * this.position[1])
@@ -161,21 +113,28 @@ export default {
   &:hover {
     fill: #DDD;
   }
+}
 
-  &.solid {
+.solid {
+  .label {
+    fill: white;
+    font-size: 0.15rem;
+  }
+
+  .outline {
     fill: #777;
 
     &:hover {
       fill: #999;
     }
   }
+}
 
-  &.origin {
-    fill: #a20000;
+.source .outline {
+  fill: #a20000;
 
-    &:hover {
-      fill: #cd1a1a;
-    }
+  &:hover {
+    fill: #cd1a1a;
   }
 }
 
@@ -185,8 +144,14 @@ export default {
   pointer-events: none;
 }
 
+.light {
+  stroke: none;
+  pointer-events: none;
+}
+
 text {
-  font-size: 0.15rem;
-  fill: white;
+  fill: lightgray;
+  font-size: 0.1rem;
+  user-select: none;
 }
 </style>

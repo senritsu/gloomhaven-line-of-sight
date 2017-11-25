@@ -1,26 +1,53 @@
 <template lang="html">
   <div class="hex-grid">
+    <QList dense>
+      <QCollapsible icon="settings" label="Settings" class="settings">
+        <QItemSeparator></QItemSeparator>
+        <QList no-border>
+          <QListHeader>Grid</QListHeader>
+          <RangeOption v-model="grid.radius" label="Hex radius" :min="1" :max="5" />
+          <RangeOption v-model="grid.width" label="Grid width" :min="1" :max="20" />
+          <RangeOption v-model="grid.height" label="Grid height" :min="1" :max="20" />
+          <BinaryOption v-model="grid.evenOffset" label="Offset behaviour" :options="['Even', 'Odd']"/>
+          <BinaryOption v-model="grid.flatTop" label="Orientation" :options="['Flat top', 'Pointy top']"/>
+          <QItemSeparator></QItemSeparator>
+          <QListHeader>Shadowcasting</QListHeader>
+          <BinaryOption v-model="pointShadowSource" label="Type" :options="['Area light', 'Point light']"/>
+        </QList>
+      </QCollapsible>
+    </QList>
+    <br>
     <svg viewBox="-50 -50 100 100" shape-rendering="geometricPrecision">
-      <hex v-for="coord in coords" :pointShadowSource="pointShadowSource" :key="`${coord[0]}/${coord[1]}`" :coords="coord" :grid="grid" />
+      <hex v-for="hex in hexes" :pointShadowSource="pointShadowSource" :key="`${hex.x}/${hex.y}`" :hex="hex" :grid="grid" @click.native="hex.solid = !hex.solid" />
     </svg>
-    <button @click="grid.flatTop = !grid.flatTop">{{ grid.flatTop ? 'Flat' : 'Pointy' }}</button>
-    <button @click="pointShadowSource = !pointShadowSource">{{ pointShadowSource ? 'Point Shadows' : 'Area Shadows' }}</button>
-    <input type="range" min="2" max="5" step="1" v-model.number="grid.radius">
-    <input type="range" min="1" max="20" step="1" v-model.number="grid.width">
-    <input type="range" min="1" max="20" step="1" v-model.number="grid.height">
   </div>
 </template>
 
 <script>
 import Hex from './Hex'
+import BinaryOption from './BinaryOption'
+import RangeOption from './RangeOption'
+import {QCollapsible, QList, QListHeader, QItem, QItemMain, QItemSide, QToggle, QSlider, QItemSeparator} from 'quasar'
 
 export default {
   components: {
+    QCollapsible,
+    QList,
+    QListHeader,
+    QItem,
+    QItemMain,
+    QItemSide,
+    QToggle,
+    QSlider,
+    QItemSeparator,
+    BinaryOption,
+    RangeOption,
     Hex
   },
   data () {
     return {
-      grid: {radius: 3, flatTop: false, width: 10, height: 6},
+      grid: {radius: 3, flatTop: false, width: 10, height: 6, evenOffset: false},
+      cells: [],
       pointShadowSource: false
     }
   },
@@ -30,6 +57,9 @@ export default {
       const xOffset = Math.floor(this.grid.width / 2)
       const yOffset = Math.floor(this.grid.height / 2)
       return this.span(this.range(-xOffset, this.grid.width - xOffset), this.range(-yOffset, this.grid.height - yOffset))
+    },
+    hexes () {
+      return this.cells.reduce((all, column) => all.concat(column), [])
     }
   },
   methods: {
@@ -39,47 +69,56 @@ export default {
     span (range1, range2) {
       return range1.map(x => range2.map(y => [x, y])).reduce((all, coords) => all.concat(coords), [])
     },
-    gridPos ([x, y], {radius, flatTop = false}) {
-      const height = 0.5 * this.sqrt3 * radius
-      return flatTop
-        ? [x * 1.5 * radius, (y * 2 + (x % 2)) * height]
-        : [(x * 2 + (y % 2)) * height, y * 1.5 * radius]
-    },
-    hex ([x, y], {radius, flatTop = false}) {
-      const halfRadius = 0.5 * radius
-      const height = 0.5 * this.sqrt3 * radius
-      return flatTop
-        ? [
-          [x + halfRadius, y + height],
-          [x + radius, y],
-          [x + halfRadius, y - height],
-          [x - halfRadius, y - height],
-          [x - radius, y],
-          [x - halfRadius, y + height]
-        ]
-        : [
-          [x, y + radius],
-          [x + height, y + halfRadius],
-          [x + height, y - halfRadius],
-          [x, y - radius],
-          [x - height, y - halfRadius],
-          [x - height, y + halfRadius]
-        ]
-    },
-    toPoints (coordinates) {
-      return coordinates.map(x => x.join(',')).join(' ')
+    recalculateGrid () {
+      const xOffset = Math.floor(this.grid.width / 2)
+      const yOffset = Math.floor(this.grid.height / 2)
+      const previousGrid = this.cells.length && this.cells[0].length
+      const oldOrigin = previousGrid ? this.cells[0][0] : {}
+      const oldMax = previousGrid ? this.cells[this.cells.length - 1][this.cells[this.cells.length - 1].length - 1] : {}
+
+      this.cells = new Array(this.grid.width).fill(null).map((_, x0) => new Array(this.grid.height).fill(null).map((_, y0) => {
+        const x = x0 - xOffset
+        const y = y0 - yOffset
+        const existingCell = x >= oldOrigin.x && x <= oldMax.x && y >= oldOrigin.y && y <= oldMax.y
+          ? this.cells[x - oldOrigin.x][y - oldOrigin.y]
+          : {}
+        // data to keep on redraw
+        const {solid} = existingCell
+        const defaults = {solid: false}
+        const data = Object.assign(defaults, {solid})
+        return {
+          x,
+          y,
+          source: x === 0 && y === 0,
+          ...data
+        }
+      }))
     }
+  },
+  watch: {
+    'grid.width': 'recalculateGrid',
+    'grid.height': 'recalculateGrid'
+  },
+  created () {
+    this.recalculateGrid()
   }
 }
 </script>
 
 <style lang="scss" scoped>
 .hex-grid {
-  width: 30%;
-  border: 1px solid gray;
-}
-
-svg {
+  padding: 5px;
   width: 100%;
+  max-width: 500px;
+
+  // for nested list inside collapsible
+  .settings /deep/ .q-collapsible-sub-item {
+    padding: 0;
+  }
+
+  svg {
+    width: 100%;
+    border: 1px solid #e0e0e0;
+  }
 }
 </style>
