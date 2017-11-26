@@ -46,7 +46,13 @@ export default {
   },
   data () {
     return {
-      grid: {radius: 3, flatTop: false, width: 10, height: 6, evenOffset: false},
+      grid: {
+        radius: 4,
+        flatTop: false,
+        width: 13,
+        height: 15,
+        evenOffset: false
+      },
       cells: [],
       pointShadowSource: false
     }
